@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameSettings, GameStatus, GameHistoryEntry, Team, Player, TeamColor } from './types';
 import { WORD_BANK } from './words';
+import { TRANSLATIONS } from './translations';
 import IntroScreen from './screens/IntroScreen';
 import SetupScreen from './screens/SetupScreen';
 import CategoryScreen from './screens/CategoryScreen';
@@ -56,7 +57,11 @@ const App: React.FC = () => {
     const savedSettings = localStorage.getItem('dor_settings');
     if (savedSettings) {
       try {
-        const parsed = JSON.parse(savedSettings);
+        const parsed = JSON.parse(savedSettings) || {};
+        // The language game on the same origin also writes 'dor_settings' (e.g. language "en-US"),
+        // so keep only a language this app actually has translations for.
+        if (parsed.language === 'en-US') parsed.language = 'en';
+        if (!(parsed.language in TRANSLATIONS)) delete parsed.language;
         setSettings(prev => ({ ...prev, ...parsed }));
       } catch (e) {
         // Fallback
