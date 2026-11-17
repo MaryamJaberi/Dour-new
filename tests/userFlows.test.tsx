@@ -148,6 +148,7 @@ describe('Complete End-to-End User Flow Tests', () => {
     expect(correctBtn).toBeInTheDocument();
 
     // Record player 1 guessing correctly
+    const wordBeforeGuess = screen.getByTestId('current-word').textContent;
     fireEvent.click(correctBtn);
 
     // Player 2 (رضا) is now active, and Floating Undo button appears
@@ -159,6 +160,8 @@ describe('Complete End-to-End User Flow Tests', () => {
     fireEvent.click(undoBtn);
     expect(screen.getAllByText(/سارا/).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /لغو حدس/i })).not.toBeInTheDocument();
+    // Undo also gives Player 1 back the word they were describing
+    expect(screen.getByTestId('current-word').textContent).toBe(wordBeforeGuess);
 
     // Advance again to Player 2
     fireEvent.click(correctBtn);

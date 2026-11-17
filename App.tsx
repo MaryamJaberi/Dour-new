@@ -11,6 +11,7 @@ import GameplayScreen from './screens/GameplayScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import HelpScreen from './screens/HelpScreen';
 import { sound } from './soundManager';
+import { shuffle, reshuffleAvoidingRepeat } from './utils/shuffle';
 import { auth, saveMatchToCloud, syncSettingsToCloud } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
@@ -123,7 +124,8 @@ const App: React.FC = () => {
       let nextPtr = currentPtr;
       // If pool reached the end, automatically reshuffle so the game NEVER halts midway!
       if (nextPtr >= pool.length) {
-        const reshuffled = [...pool].sort(() => Math.random() - 0.5);
+        // Never start the new order with the word that was just on screen.
+        const reshuffled = reshuffleAvoidingRepeat(pool, pool[pool.length - 1]);
         setShuffledPool(reshuffled);
         pool = reshuffled;
         nextPtr = 0;
@@ -201,7 +203,7 @@ const App: React.FC = () => {
       relevantPoolIndices = WORD_BANK.map((_, i) => i);
     }
     
-    const sessionPool = [...relevantPoolIndices].sort(() => Math.random() - 0.5);
+    const sessionPool = shuffle(relevantPoolIndices);
     
     setShuffledPool(sessionPool);
     setPoolPointer(0);
@@ -379,6 +381,7 @@ const App: React.FC = () => {
           currentWord={currentWord}
           currentWordDifficulty={currentWordDifficulty}
           setCurrentWord={setCurrentWord}
+          setCurrentWordDifficulty={setCurrentWordDifficulty}
           swapCooldown={swapCooldown}
           onGetNextWord={getNextWord}
           onResume={handleResume}

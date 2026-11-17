@@ -30,6 +30,7 @@ import {
 interface UndoSnapshot {
   activePlayerIndex: number;
   word: string;
+  wordDifficulty?: 'easy' | 'medium' | 'hard';
   roundTimer: number;
   teams: Team[];
 }
@@ -51,6 +52,7 @@ interface Props {
   currentWord: string;
   currentWordDifficulty?: 'easy' | 'medium' | 'hard';
   setCurrentWord?: (w: string) => void;
+  setCurrentWordDifficulty?: (d: 'easy' | 'medium' | 'hard') => void;
   swapCooldown: number;
   onGetNextWord: () => void;
   onResume: () => void;
@@ -63,7 +65,7 @@ interface Props {
 const GameplayScreen: React.FC<Props> = ({ 
   settings, onUpdateSettings, gameStatus, setGameStatus, teams, setTeams, players, 
   currentRound, setCurrentRound, activePlayerIndex, setActivePlayerIndex, 
-  roundTimer, setRoundTimer, currentWord, currentWordDifficulty, swapCooldown, 
+  roundTimer, setRoundTimer, currentWord, currentWordDifficulty, setCurrentWord, setCurrentWordDifficulty, swapCooldown, 
   onGetNextWord, onResume, isPoolExhausted, onFinish, onExit, onOpenHelp 
 }) => {
   const t = TRANSLATIONS[settings.language];
@@ -207,6 +209,7 @@ const GameplayScreen: React.FC<Props> = ({
     setUndoSnapshot({
       activePlayerIndex,
       word: currentWord,
+      wordDifficulty: currentWordDifficulty,
       roundTimer,
       teams: JSON.parse(JSON.stringify(teams))
     });
@@ -235,6 +238,9 @@ const GameplayScreen: React.FC<Props> = ({
     setActivePlayerIndex(undoSnapshot.activePlayerIndex);
     setTeams(undoSnapshot.teams);
     setRoundTimer(undoSnapshot.roundTimer);
+    // Give the player back the word they were describing (it used to stay on the next player's word).
+    if (setCurrentWord) setCurrentWord(undoSnapshot.word);
+    if (setCurrentWordDifficulty && undoSnapshot.wordDifficulty) setCurrentWordDifficulty(undoSnapshot.wordDifficulty);
 
     setUndoSnapshot(null);
     setUndoTimeLeft(0);
@@ -591,6 +597,7 @@ const GameplayScreen: React.FC<Props> = ({
               )}
 
               <h3 
+                data-testid="current-word"
                 className={`font-black text-[#1a0833] leading-tight uppercase select-none text-center drop-shadow-[1.5px_1.5px_0px_rgba(0,0,0,0.1)] filter ${
                   currentWord.length > 30 
                     ? 'text-base sm:text-lg' 
