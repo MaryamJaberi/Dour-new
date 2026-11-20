@@ -18,6 +18,8 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    # فقط در مخزن اصلی اجرا شود، نه در نسخهٔ AI Studio
+    if: github.repository == 'MaryamJaberi/Dour-new'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
