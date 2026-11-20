@@ -5,7 +5,7 @@
 ## یک مخزن اصلی
 
 - مخزن اصلی و منبع حقیقت: `MaryamJaberi/Dour-new`، شاخهٔ `main`.
-- اگر Google AI Studio مخزن جداگانهٔ خودش را داشته باشد، گردش‌کار `.github/workflows/aistudio-sync.yml` هر ۳۰ دقیقه آن را با این مخزن همگام می‌کند:
+- Google AI Studio مخزن جداگانهٔ خودش را دارد: `MaryamJaberi/Dour-studio`. گردش‌کار `.github/workflows/aistudio-sync.yml` هر ۳۰ دقیقه آن را با این مخزن همگام می‌کند:
   تغییر AI Studio → PR با شاخهٔ `from-aistudio`؛ و `main` این مخزن → `main` مخزن AI Studio.
   تا وقتی متغیر `AISTUDIO_REPO` در تنظیمات این مخزن ساخته نشده، این پل خاموش است.
 - تاریخچهٔ مخزن AI Studio هرگز با این مخزن ادغام نمی‌شود؛ فقط محتوا جابه‌جا می‌شود. روی مخزن AI Studio مستقیم کار نکن.
