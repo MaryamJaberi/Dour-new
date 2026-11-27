@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../translations';
+import { isRTLLanguage } from '../i18n';
 import { TeamMascot } from '../components/Mascots';
 import { sound } from '../soundManager';
 import { BookOpen, HelpCircle, Sparkles, Zap, ArrowRight, ArrowLeft } from 'lucide-react';
@@ -15,7 +16,7 @@ const HelpScreen: React.FC<Props> = ({ language, onClose, initialSection }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const t = TRANSLATIONS[language];
   const help = t.helpContent;
-  const isRTL = language === 'fa' || language === 'ar';
+  const isRTL = isRTLLanguage(language);
 
   useEffect(() => {
     if (initialSection && scrollRef.current) {
@@ -58,10 +59,10 @@ const HelpScreen: React.FC<Props> = ({ language, onClose, initialSection }) => {
           <div className="flex-1 min-w-0">
             <span className="text-[10px] bg-[#FFE600] text-[#1a0833] border border-[#241442] px-2 py-0.5 rounded-lg font-black uppercase shadow-xs flex items-center gap-1 w-fit">
               <Zap size={11} color="#1a0833" fill="#1a0833" />
-              <span>{language === 'fa' ? 'نکته طلایی بازی' : 'PARTY TIP'}</span>
+              <span>{t.partyTipBadge}</span>
             </span>
             <p className="text-[11px] font-black text-[#1a0833] leading-normal mt-1">
-              {language === 'fa' ? 'کلمه را به یارتان برسانید و بدون اتلاف وقت گوشی را به نفر بعد بدهید!' : 'Pass the phone after every correct word. Avoid using forbidden gestures!'}
+              {t.partyTipBody}
             </p>
           </div>
         </div>

@@ -11,6 +11,16 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
       },
       plugins: [react()],
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+              icons: ['lucide-react']
+            }
+          }
+        }
+      },
       test: {
         environment: 'jsdom',
         globals: true,

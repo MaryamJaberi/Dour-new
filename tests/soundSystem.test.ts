@@ -124,4 +124,51 @@ describe('Sound System and Audio Synthesizer Verification with Granular Controls
 
     vi.useRealTimers();
   });
+
+  test('Unmuting during Gameplay BGM resumes game mode instead of switching to menu BGM', () => {
+    sound.startGameplayBGM(60);
+    expect(sound.getCurrentBgmMode()).toBe('game');
+
+    sound.setMuted(true);
+    expect(sound.getCurrentBgmMode()).toBe('none');
+    expect(sound.getDesiredBgmMode()).toBe('game');
+
+    sound.setMuted(false);
+    expect(sound.getCurrentBgmMode()).toBe('game');
+  });
+
+  test('updateGameplayTempo updates live countdown seconds for dynamic BGM speed', () => {
+    sound.startGameplayBGM(90);
+    expect(sound.getGameplaySecondsRemaining()).toBe(90);
+
+    sound.updateGameplayTempo(4);
+    expect(sound.getGameplaySecondsRemaining()).toBe(4);
+  });
+
+  test('visibilitychange, blur, and pagehide immediately stop BGM and suspend AudioContext in background', () => {
+    sound.startMenuBGM();
+    expect(sound.getCurrentBgmMode()).toBe('menu');
+
+    // Tab hidden
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(sound.getCurrentBgmMode()).toBe('none');
+
+    // Return to foreground
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(sound.getCurrentBgmMode()).toBe('menu');
+
+    // Window blur (app switched to background on mobile/desktop)
+    window.dispatchEvent(new Event('blur'));
+    expect(sound.getCurrentBgmMode()).toBe('none');
+
+    // Window focus restores menu BGM
+    window.dispatchEvent(new Event('focus'));
+    expect(sound.getCurrentBgmMode()).toBe('menu');
+
+    // pagehide stops BGM
+    window.dispatchEvent(new Event('pagehide'));
+    expect(sound.getCurrentBgmMode()).toBe('none');
+  });
 });

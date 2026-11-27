@@ -1,5 +1,6 @@
 
 import { Language } from './types';
+import { EXTRA_UI_TRANSLATIONS, ExtraUITranslations, SUPPORTED_LANGUAGES } from './i18n';
 
 export const NATIVE_LANGUAGE_NAMES: Record<Language, string> = {
   fa: "فارسی",
@@ -13,7 +14,9 @@ export const NATIVE_LANGUAGE_NAMES: Record<Language, string> = {
   uk: "Українська"
 };
 
-export const TRANSLATIONS: Record<Language, any> = {
+export type TranslationDictionary = typeof BASE_TRANSLATIONS['en'] & ExtraUITranslations;
+
+const BASE_TRANSLATIONS: Record<Language, any> = {
   en: {
     title: "Turn",
     subtitle: "Group Word Game",
@@ -1303,3 +1306,34 @@ export const TRANSLATIONS: Record<Language, any> = {
     }
   }
 };
+
+export const TRANSLATIONS: Record<Language, TranslationDictionary> = SUPPORTED_LANGUAGES.reduce(
+  (acc, lang) => {
+    const base = BASE_TRANSLATIONS[lang];
+    const extra = EXTRA_UI_TRANSLATIONS[lang];
+    const baseSections: Array<{ id: string; title: string; body: string }> = base.helpContent?.sections || [];
+    const hasDifficulty = baseSections.some(s => s.id === 'difficulty');
+    const mergedSections = hasDifficulty
+      ? baseSections
+      : [
+          ...baseSections.slice(0, 3),
+          extra.difficultyHelpSection,
+          ...baseSections.slice(3)
+        ];
+
+    acc[lang] = {
+      ...base,
+      ...extra,
+      categories: {
+        ...base.categories,
+        ...extra.extraCategories
+      },
+      helpContent: {
+        ...base.helpContent,
+        sections: mergedSections
+      }
+    };
+    return acc;
+  },
+  {} as Record<Language, TranslationDictionary>
+);

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GameSettings, GameStatus, GameHistoryEntry, Team, Player, TeamColor } from './types';
+import { GameSettings, GameStatus, GameHistoryEntry, Team, Player, TeamColor, GameMode, WordDifficulty } from './types';
 import { WORD_BANK } from './words';
 import { TRANSLATIONS } from './translations';
+import { formatTemplate, isRTLLanguage, syncDocumentLanguage } from './i18n';
+import { dbRepo, getDailyChallengeForDate } from './database';
 import IntroScreen from './screens/IntroScreen';
 import SetupScreen from './screens/SetupScreen';
 import CategoryScreen from './screens/CategoryScreen';
@@ -11,8 +13,14 @@ import GameplayScreen from './screens/GameplayScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import HelpScreen from './screens/HelpScreen';
 import { sound } from './soundManager';
-import { auth, saveMatchToCloud, syncSettingsToCloud } from './firebase';
+import { auth, syncSettingsToCloud } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+
+interface SessionWordItem {
+  id: string;
+  text: string;
+  difficulty: WordDifficulty;
+}
 
 const DEFAULT_SETTINGS: GameSettings = {
   playerCount: 4,
@@ -20,6 +28,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   roundDuration: 90,
   difficulty: 'easy',
   selectedCategories: ["CAT_OBJECTS", "CAT_ANIMALS", "CAT_FOOD"],
+  selectedCustomPackIds: [],
   playerNames: Array(8).fill(''),
   language: 'fa',
   passPhoneScreenEnabled: false,
@@ -34,6 +43,8 @@ const App: React.FC = () => {
   const [activeHelpSection, setActiveHelpSection] = useState<string>('intro');
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [history, setHistory] = useState<GameHistoryEntry[]>([]);
+  const [activeMode, setActiveMode] = useState<GameMode>('classic');
+  const [activeDailyDateKey, setActiveDailyDateKey] = useState<string | undefined>(undefined);
 
   // Gameplay State
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.Setup);
@@ -42,12 +53,13 @@ const App: React.FC = () => {
   const [currentRound, setCurrentRound] = useState(1);
   const [activePlayerIndex, setActivePlayerIndex] = useState(0);
   const [roundTimer, setRoundTimer] = useState(0);
-  
-  // SESSION WORD POOL
-  const [shuffledPool, setShuffledPool] = useState<number[]>([]);
+
+  // SESSION WORD POOL (supports built-in + custom word packs + anti-repeat memory)
+  const [sessionWords, setSessionWords] = useState<SessionWordItem[]>([]);
   const [poolPointer, setPoolPointer] = useState(0);
   const [currentWord, setCurrentWord] = useState('');
-  const [currentWordDifficulty, setCurrentWordDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
+  const [currentWordId, setCurrentWordId] = useState('');
+  const [currentWordDifficulty, setCurrentWordDifficulty] = useState<WordDifficulty>('easy');
   const [swapCooldown, setSwapCooldown] = useState(20000);
   const [isPoolExhausted, setIsPoolExhausted] = useState(false);
 
@@ -58,33 +70,42 @@ const App: React.FC = () => {
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings) || {};
-        // The language game on the same origin also writes 'dor_settings' (e.g. language "en-US"),
-        // so keep only a language this app actually has translations for.
         if (parsed.language === 'en-US') parsed.language = 'en';
         if (!(parsed.language in TRANSLATIONS)) delete parsed.language;
         setSettings(prev => ({ ...prev, ...parsed }));
-      } catch (e) {
+      } catch {
         // Fallback
       }
     }
-    const savedHistory = localStorage.getItem('dor_history');
-    if (savedHistory) {
-      try {
-        setHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        // Fallback
-      }
-    }
+    setHistory(dbRepo.getHistory());
   }, []);
 
+  // Sync HTML document lang & dir whenever language changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    syncDocumentLanguage(settings.language);
+  }, [settings.language]);
+
+  // Subscribe once to Firebase Auth & hydrate/sync cloud database cleanly
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        syncSettingsToCloud(user.uid, settings).catch(console.error);
+        try {
+          const { cloudSettings } = await dbRepo.syncWithCloud(user.uid);
+          if (cloudSettings && cloudSettings.language in TRANSLATIONS) {
+            setSettings(prev => {
+              const merged = { ...prev, ...cloudSettings };
+              localStorage.setItem('dor_settings', JSON.stringify(merged));
+              return merged;
+            });
+          }
+          setHistory(dbRepo.getHistory());
+        } catch (err) {
+          console.error('Cloud sync error:', err);
+        }
       }
     });
     return () => unsubscribe();
-  }, [settings]);
+  }, []);
 
   useEffect(() => {
     const isMasterOn = settings.soundEnabled ?? true;
@@ -94,13 +115,16 @@ const App: React.FC = () => {
     sound.setSoundEnabled(isMasterOn);
     sound.setSfxEnabled(isSfxOn);
     sound.setBgmEnabled(isBgmOn);
+  }, [settings.soundEnabled, settings.sfxEnabled, settings.bgmEnabled]);
 
-    if (isMasterOn && isBgmOn && currentScreen !== 'GAME') {
+  // Background music plays ONLY on the first (INTRO) screen and stops on all other screens
+  useEffect(() => {
+    if (currentScreen === 'INTRO') {
       sound.startMenuBGM();
-    } else if (!isMasterOn || !isBgmOn || currentScreen === 'GAME') {
-      sound.stopMenuBGM();
+    } else {
+      sound.stopBGM();
     }
-  }, [settings.soundEnabled, settings.sfxEnabled, settings.bgmEnabled, currentScreen]);
+  }, [currentScreen]);
 
   const saveSettings = (newSettings: GameSettings) => {
     setSettings(newSettings);
@@ -111,114 +135,166 @@ const App: React.FC = () => {
   };
 
   /**
-   * Word Selection from single shuffled session pool with auto-recycling (never halts)
+   * Word Selection from session pool with auto-recycling & seen-word tracking
    */
-  const getNextWord = useCallback(() => {
+  const getNextWord = useCallback((outcome?: 'guessed' | 'swapped') => {
+    if (outcome && currentWordId) {
+      dbRepo.recordWordOutcome(currentWordId, outcome);
+    }
     setPoolPointer(currentPtr => {
-      let pool = shuffledPool;
+      let pool = sessionWords;
       if (!pool || pool.length === 0) {
-        pool = Array.from({ length: WORD_BANK.length }, (_, i) => i);
+        pool = WORD_BANK.map((w, idx) => ({
+          id: w.id || `w_${idx}`,
+          text: w.words[settings.language] || w.words.en,
+          difficulty: w.difficulty
+        }));
       }
 
       let nextPtr = currentPtr;
-      // If pool reached the end, automatically reshuffle so the game NEVER halts midway!
       if (nextPtr >= pool.length) {
         const reshuffled = [...pool].sort(() => Math.random() - 0.5);
-        setShuffledPool(reshuffled);
+        setSessionWords(reshuffled);
         pool = reshuffled;
         nextPtr = 0;
       }
 
-      const wordIdx = pool[nextPtr] !== undefined ? pool[nextPtr] : 0;
-      const wordData = WORD_BANK[wordIdx] || WORD_BANK[0];
-      
-      if (wordData) {
-        setCurrentWord(wordData.words[settings.language] || wordData.words['en'] || 'کلمه');
-        setCurrentWordDifficulty(wordData.difficulty || 'easy');
+      const item = pool[nextPtr] || pool[0];
+      if (item) {
+        setCurrentWord(item.text);
+        setCurrentWordId(item.id);
+        setCurrentWordDifficulty(item.difficulty || 'easy');
       }
-      
+
       setSwapCooldown(20000);
       setIsPoolExhausted(false);
       return nextPtr + 1;
     });
-  }, [shuffledPool, settings.language]);
+  }, [sessionWords, settings.language, currentWordId]);
+
+  /**
+   * Builds the session word pool from selected categories + custom word packs,
+   * prioritizing unseen words from the local-first word memory.
+   */
+  const buildSessionPool = (cfg: GameSettings): SessionWordItem[] => {
+    const targetDifficulty = cfg.difficulty || 'easy';
+
+    let relevantIndices = WORD_BANK
+      .map((w, i) => {
+        const catMatch = cfg.selectedCategories.includes(w.category);
+        const diffMatch = targetDifficulty === 'all' || w.difficulty === targetDifficulty;
+        return catMatch && diffMatch ? i : -1;
+      })
+      .filter(i => i !== -1);
+
+    if (relevantIndices.length < 25) {
+      const catIndices = WORD_BANK
+        .map((w, i) => (cfg.selectedCategories.includes(w.category) ? i : -1))
+        .filter(i => i !== -1);
+      relevantIndices = Array.from(new Set([...relevantIndices, ...catIndices]));
+    }
+
+    if (relevantIndices.length < 25) {
+      const diffIndices = WORD_BANK
+        .map((w, i) => (targetDifficulty === 'all' || w.difficulty === targetDifficulty ? i : -1))
+        .filter(i => i !== -1);
+      relevantIndices = Array.from(new Set([...relevantIndices, ...diffIndices]));
+    }
+
+    if (relevantIndices.length === 0) {
+      relevantIndices = WORD_BANK.map((_, i) => i);
+    }
+
+    const prioritizedIndices = dbRepo.prioritizeUnseenIndices(
+      relevantIndices,
+      idx => WORD_BANK[idx]?.id || `w_${idx}`
+    );
+
+    const builtInItems: SessionWordItem[] = prioritizedIndices.map(idx => {
+      const w = WORD_BANK[idx];
+      return {
+        id: w.id || `w_${idx}`,
+        text: w.words[cfg.language] || w.words.en,
+        difficulty: w.difficulty
+      };
+    });
+
+    // Mix in selected custom word packs (placed near the front so players see their own words!)
+    const selectedPackIds = cfg.selectedCustomPackIds || [];
+    const customItems: SessionWordItem[] = [];
+    if (selectedPackIds.length > 0) {
+      const allPacks = dbRepo.getCustomPacks();
+      allPacks
+        .filter(p => selectedPackIds.includes(p.id))
+        .forEach(pack => {
+          pack.words.forEach((word, wIdx) => {
+            customItems.push({
+              id: `${pack.id}_${wIdx}`,
+              text: word,
+              difficulty: pack.difficulty
+            });
+          });
+        });
+    }
+
+    if (customItems.length > 0) {
+      const shuffledCustom = [...customItems].sort(() => Math.random() - 0.5);
+      return [...shuffledCustom, ...builtInItems];
+    }
+
+    return builtInItems;
+  };
 
   /**
    * Prepares Teams, Seating, and Word Bank, then shows SEATING_CONFIRM
    */
-  const prepareGameSeating = () => {
+  const prepareGameSeating = (overrideSettings?: GameSettings, mode?: GameMode) => {
+    const cfg = overrideSettings || settings;
+    const t = TRANSLATIONS[cfg.language];
     const teamColors = [TeamColor.Blue, TeamColor.Red, TeamColor.Green, TeamColor.Yellow];
-    const teamCount = settings.playerCount / 2;
-    const totalGameTime = settings.roundsCount * settings.roundDuration * 1000;
+    const teamCount = cfg.playerCount / 2;
+    const totalGameTime = cfg.roundsCount * cfg.roundDuration * 1000;
     const timePerTeam = totalGameTime / teamCount;
 
-    // Team 1: (P1, P_opposite), Team 2: (P2, P_opposite), etc.
     const initialTeams: Team[] = Array.from({ length: teamCount }).map((_, i) => ({
       id: i,
       color: teamColors[i],
       timeRemaining: timePerTeam,
       isEliminated: false,
-      playerIds: [i, i + teamCount]
+      playerIds: [i, i + teamCount],
+      wordsGuessed: 0
     }));
 
-    const initialPlayers: Player[] = Array.from({ length: settings.playerCount }).map((_, i) => {
+    const initialPlayers: Player[] = Array.from({ length: cfg.playerCount }).map((_, i) => {
       const teamId = i % teamCount;
-      const defaultName = settings.language === 'fa' ? `بازیکن ${i + 1}` : `Player ${i + 1}`;
+      const defaultName = formatTemplate(t.playerPlaceholder, { n: i + 1 });
       return {
         id: i,
-        name: settings.playerNames[i]?.trim() || defaultName,
-        teamId: teamId,
+        name: cfg.playerNames[i]?.trim() || defaultName,
+        teamId,
         teamColor: teamColors[teamId]
       };
     });
 
-    const targetDifficulty = settings.difficulty || 'easy';
-    let relevantPoolIndices = WORD_BANK
-      .map((w, i) => {
-        const catMatch = settings.selectedCategories.includes(w.category);
-        const diffMatch = targetDifficulty === 'all' || w.difficulty === targetDifficulty;
-        return (catMatch && diffMatch) ? i : -1;
-      })
-      .filter(i => i !== -1);
-    
-    // If selected pool is small, supplement with all words from selected categories
-    if (relevantPoolIndices.length < 25) {
-      const catIndices = WORD_BANK
-        .map((w, i) => settings.selectedCategories.includes(w.category) ? i : -1)
-        .filter(i => i !== -1);
-      relevantPoolIndices = Array.from(new Set([...relevantPoolIndices, ...catIndices]));
-    }
-
-    // If still too small, supplement with all words of target difficulty
-    if (relevantPoolIndices.length < 25) {
-      const diffIndices = WORD_BANK
-        .map((w, i) => (targetDifficulty === 'all' || w.difficulty === targetDifficulty ? i : -1))
-        .filter(i => i !== -1);
-      relevantPoolIndices = Array.from(new Set([...relevantPoolIndices, ...diffIndices]));
-    }
-
-    if (relevantPoolIndices.length === 0) {
-      relevantPoolIndices = WORD_BANK.map((_, i) => i);
-    }
-    
-    const sessionPool = [...relevantPoolIndices].sort(() => Math.random() - 0.5);
-    
-    setShuffledPool(sessionPool);
+    const pool = buildSessionPool(cfg);
+    setSessionWords(pool);
     setPoolPointer(0);
     setIsPoolExhausted(false);
-    
+
+    const resolvedMode: GameMode =
+      mode || ((cfg.selectedCustomPackIds?.length || 0) > 0 ? 'custom' : 'classic');
+    setActiveMode(resolvedMode);
+
     setTeams(initialTeams);
     setPlayers(initialPlayers);
     setCurrentRound(1);
     setActivePlayerIndex(0);
-    setRoundTimer(settings.roundDuration * 1000);
+    setRoundTimer(cfg.roundDuration * 1000);
 
-    if (sessionPool.length > 0) {
-      const firstWordData = WORD_BANK[sessionPool[0]];
-      if (firstWordData) {
-        setCurrentWord(firstWordData.words[settings.language] || firstWordData.words['en']);
-        setCurrentWordDifficulty(firstWordData.difficulty || 'easy');
-      }
+    if (pool.length > 0) {
+      setCurrentWord(pool[0].text);
+      setCurrentWordId(pool[0].id);
+      setCurrentWordDifficulty(pool[0].difficulty || 'easy');
       setPoolPointer(1);
     }
 
@@ -227,8 +303,22 @@ const App: React.FC = () => {
   };
 
   /**
-   * Start Round 1 after Seating Confirmation
+   * Launches today's deterministic Daily Challenge
    */
+  const handleStartDailyChallenge = () => {
+    const daily = getDailyChallengeForDate();
+    const dailySettings: GameSettings = {
+      ...settings,
+      selectedCategories: daily.categories,
+      difficulty: daily.difficulty,
+      selectedCustomPackIds: []
+    };
+    saveSettings(dailySettings);
+    setActiveDailyDateKey(daily.dateKey);
+    setActiveMode('daily');
+    setCurrentScreen('PLAYERS');
+  };
+
   const startConfirmedGame = () => {
     setGameStatus(GameStatus.ActiveTurn);
     setCurrentScreen('GAME');
@@ -236,7 +326,7 @@ const App: React.FC = () => {
 
   const handleResume = () => {
     getNextWord();
-    setGameStatus(prev => prev === GameStatus.WinnerScreen || prev === GameStatus.GameEnded ? prev : GameStatus.ActiveTurn);
+    setGameStatus(prev => (prev === GameStatus.WinnerScreen || prev === GameStatus.GameEnded ? prev : GameStatus.ActiveTurn));
   };
 
   const openHelp = (section: string) => {
@@ -253,7 +343,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Millisecond Timer loop for ACTIVE_TURN with robust delta-time (never freezes or drifts on mobile)
+  // Millisecond Timer loop for ACTIVE_TURN with robust delta-time
   useEffect(() => {
     if (gameStatus === GameStatus.ActiveTurn) {
       let lastTime = Date.now();
@@ -263,22 +353,19 @@ const App: React.FC = () => {
         const delta = Math.min(now - lastTime, 200);
         lastTime = now;
 
-        setRoundTimer(prev => {
-          if (prev <= delta) {
-            return 0;
-          }
-          return prev - delta;
-        });
+        setRoundTimer(prev => (prev <= delta ? 0 : prev - delta));
 
         const activePlayer = players[activePlayerIndex];
         if (activePlayer) {
-          setTeams(prev => prev.map(t => {
-            if (t.id === activePlayer.teamId && !t.isEliminated) {
-              const newTime = t.timeRemaining - delta;
-              return { ...t, timeRemaining: Math.max(0, newTime) };
-            }
-            return t;
-          }));
+          setTeams(prev =>
+            prev.map(t => {
+              if (t.id === activePlayer.teamId && !t.isEliminated) {
+                const newTime = t.timeRemaining - delta;
+                return { ...t, timeRemaining: Math.max(0, newTime) };
+              }
+              return t;
+            })
+          );
         }
 
         setSwapCooldown(prev => Math.max(0, prev - delta));
@@ -287,46 +374,52 @@ const App: React.FC = () => {
       if (timerRef.current) clearInterval(timerRef.current);
     }
 
-    return () => { 
-      if (timerRef.current) clearInterval(timerRef.current); 
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [gameStatus, players, activePlayerIndex]);
 
-  const isRTL = settings.language === 'fa' || settings.language === 'ar';
+  const isRTL = isRTLLanguage(settings.language);
 
   return (
-    <div 
+    <div
       className="h-[100dvh] min-h-[100dvh] max-h-[100dvh] md:h-[880px] md:max-h-[92vh] md:my-auto max-w-md mx-auto bg-pixel-grid relative flex flex-col overflow-hidden border-0 md:border-[5px] md:border-[#241442] shadow-2xl md:shadow-[8px_8px_0px_0px_#241442] rounded-none md:rounded-[28px]"
       dir={isRTL ? 'rtl' : 'ltr'}
     >
       {/* 1. SPLASH / INTRO */}
       {currentScreen === 'INTRO' && (
-        <IntroScreen 
+        <IntroScreen
           language={settings.language}
-          onLanguageChange={(l) => saveSettings({...settings, language: l})}
-          onNext={() => { setGameStatus(GameStatus.Setup); setCurrentScreen('SETUP'); }} 
-          onOpenHistory={() => setCurrentScreen('HISTORY')} 
-          onOpenHelp={() => openHelp('rules')} 
+          onLanguageChange={(l) => saveSettings({ ...settings, language: l })}
+          onNext={() => {
+            setActiveMode('classic');
+            setActiveDailyDateKey(undefined);
+            setGameStatus(GameStatus.Setup);
+            setCurrentScreen('SETUP');
+          }}
+          onStartDailyChallenge={handleStartDailyChallenge}
+          onOpenHistory={() => setCurrentScreen('HISTORY')}
+          onOpenHelp={() => openHelp('rules')}
         />
       )}
-      
+
       {/* 2. SETUP */}
       {currentScreen === 'SETUP' && (
-        <SetupScreen 
-          settings={settings} 
-          onSave={saveSettings} 
-          onNext={() => setCurrentScreen('CATEGORIES')} 
+        <SetupScreen
+          settings={settings}
+          onSave={saveSettings}
+          onNext={() => setCurrentScreen('CATEGORIES')}
           onBack={() => { setGameStatus(GameStatus.Splash); setCurrentScreen('INTRO'); }}
           onOpenHelp={() => openHelp('setup')}
         />
       )}
 
-      {/* CATEGORIES */}
+      {/* CATEGORIES & CUSTOM PACKS */}
       {currentScreen === 'CATEGORIES' && (
-        <CategoryScreen 
-          settings={settings} 
-          onSave={saveSettings} 
-          onNext={() => setCurrentScreen('PLAYERS')} 
+        <CategoryScreen
+          settings={settings}
+          onSave={saveSettings}
+          onNext={() => setCurrentScreen('PLAYERS')}
           onBack={() => setCurrentScreen('SETUP')}
           onOpenHelp={() => openHelp('categories')}
         />
@@ -334,11 +427,11 @@ const App: React.FC = () => {
 
       {/* PLAYERS */}
       {currentScreen === 'PLAYERS' && (
-        <PlayerNameScreen 
-          settings={settings} 
-          onSave={saveSettings} 
-          onStart={prepareGameSeating} 
-          onBack={() => setCurrentScreen('CATEGORIES')}
+        <PlayerNameScreen
+          settings={settings}
+          onSave={saveSettings}
+          onStart={() => prepareGameSeating(settings, activeMode)}
+          onBack={() => setCurrentScreen(activeMode === 'daily' ? 'INTRO' : 'CATEGORIES')}
           onOpenHelp={() => openHelp('players')}
         />
       )}
@@ -357,7 +450,7 @@ const App: React.FC = () => {
 
       {/* 4. ACTIVE GAMEPLAY */}
       {currentScreen === 'GAME' && (
-        <GameplayScreen 
+        <GameplayScreen
           settings={settings}
           onUpdateSettings={saveSettings}
           gameStatus={gameStatus}
@@ -374,37 +467,36 @@ const App: React.FC = () => {
           currentWord={currentWord}
           currentWordDifficulty={currentWordDifficulty}
           setCurrentWord={setCurrentWord}
+          setCurrentWordDifficulty={setCurrentWordDifficulty}
           swapCooldown={swapCooldown}
           onGetNextWord={getNextWord}
           onResume={handleResume}
           isPoolExhausted={isPoolExhausted}
+          gameMode={activeMode}
+          dailyDateKey={activeDailyDateKey}
           onFinish={(entry) => {
-            const updated = [entry, ...history].slice(0, 30);
+            const { history: updated } = dbRepo.recordMatch(entry, settings, auth.currentUser?.uid);
             setHistory(updated);
-            localStorage.setItem('dor_history', JSON.stringify(updated));
-            if (auth.currentUser) {
-              saveMatchToCloud(auth.currentUser.uid, entry).catch(console.error);
-            }
-          }} 
+          }}
           onExit={() => { setGameStatus(GameStatus.Setup); setCurrentScreen('INTRO'); }}
           onOpenHelp={() => openHelp('gameplay')}
         />
       )}
 
-      {/* MATCH HISTORY */}
+      {/* MATCH HISTORY, LEADERBOARD & ACHIEVEMENTS */}
       {currentScreen === 'HISTORY' && (
-        <HistoryScreen 
+        <HistoryScreen
           language={settings.language}
-          history={history} 
-          onBack={() => setCurrentScreen('INTRO')} 
+          history={history}
+          onBack={() => setCurrentScreen('INTRO')}
         />
       )}
 
       {/* RULES / HELP GUIDE */}
       {currentScreen === 'HELP' && (
-        <HelpScreen 
+        <HelpScreen
           language={settings.language}
-          onClose={closeHelp} 
+          onClose={closeHelp}
           initialSection={activeHelpSection}
         />
       )}

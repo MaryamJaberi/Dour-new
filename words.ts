@@ -1,12 +1,14 @@
-import { Language, DifficultyLevel } from './types';
+import { Language } from './types';
+import { EXTRA_WORDS } from './extraWords';
 
 export interface WordData {
+  id?: string;
   category: string;
   difficulty: 'easy' | 'medium' | 'hard';
   words: Record<Language, string>;
 }
 
-export const WORD_BANK: WordData[] = [
+const CORE_WORDS: WordData[] = [
   // ==========================================
   // LEVEL 1: EASY (آسان - تک‌کلمه‌ای)
   // ==========================================
@@ -77,7 +79,7 @@ export const WORD_BANK: WordData[] = [
   { category: "CAT_FOOD", difficulty: "easy", words: { fa: "تخم‌مرغ", en: "Egg", nl: "Ei", de: "Ei", fr: "Œuf", ar: "بيض", tr: "Yumurta", pl: "Jajko", uk: "Яйце" } },
   { category: "CAT_FOOD", difficulty: "easy", words: { fa: "پنیر", en: "Cheese", nl: "Kaas", de: "Käse", fr: "Fromage", ar: "جبن", tr: "Peynir", pl: "Ser", uk: "Сир" } },
   { category: "CAT_FOOD", difficulty: "easy", words: { fa: "ماست", en: "Yogurt", nl: "Yoghurt", de: "Joghurt", fr: "Yaourt", ar: "زبادي", tr: "Yoğurt", pl: "Jogurt", uk: "Йогурт" } },
-  { category: "CAT_FOOD", difficulty: "easy", words: { fa: "شیر", en: "Milk", nl: "Melk", de: "Milch", fr: "Lait", ar: "حليب", tr: "Süt", pl: "Mleko", uk: "Молоко" } },
+  { category: "CAT_FOOD", difficulty: "easy", words: { fa: "کره", en: "Butter", nl: "Boter", de: "Butter", fr: "Beurre", ar: "زبدة", tr: "Tereyağı", pl: "Masło", uk: "Масло" } },
   { category: "CAT_FOOD", difficulty: "easy", words: { fa: "بستنی", en: "Ice Cream", nl: "IJs", de: "Eis", fr: "Glace", ar: "بوظة", tr: "Dondurma", pl: "Lody", uk: "Морозиво" } },
   { category: "CAT_FOOD", difficulty: "easy", words: { fa: "کیک", en: "Cake", nl: "Taart", de: "Kuchen", fr: "Gâteau", ar: "كعك", tr: "Pasta", pl: "Ciasto", uk: "Торт" } },
   { category: "CAT_FOOD", difficulty: "easy", words: { fa: "شکلات", en: "Chocolate", nl: "Chocolade", de: "Schokolade", fr: "Chocolat", ar: "شوكولاتة", tr: "Çikolata", pl: "Czekolada", uk: "Шоколад" } },
@@ -291,3 +293,9 @@ export const WORD_BANK: WordData[] = [
   { category: "CAT_ENTERTAINMENT", difficulty: "hard", words: { fa: "تماشای فیلم اکشن در سینمای سه‌بعدی", en: "Watching Action Movie in 3D Cinema", nl: "Actiefilm kijken in de 3D-bioscoop", de: "Einen Actionfilm im 3D-Kino schauen", fr: "Regarder un film d'action en cinéma 3D", ar: "مشاهدة فيلم أكشن في سينما ثلاثية الأبعاد", tr: "3D sinemada aksiyon filmi izlemek", pl: "Oglądanie filmu akcji w kinie 3D", uk: "Перегляд бойовика в 3D-кінотеатрі" } },
   { category: "CAT_ENTERTAINMENT", difficulty: "hard", words: { fa: "نواختن پیانوی کلاسیک در سالن اپرا", en: "Playing Grand Piano in Opera House", nl: "Klassieke piano spelen in het operagebouw", de: "Klavierspielen im großen Opernhaus", fr: "Jouer du piano à queue à l'opéra", ar: "عزف البيانو الكلاسيكي في دار الأوبرا", tr: "Opera salonunda klasik piyano çalmak", pl: "Gra na fortepianie w sali operowej", uk: "Гра на роялі в оперному театрі" } }
 ];
+
+export const WORD_BANK: WordData[] = [...CORE_WORDS, ...EXTRA_WORDS].map((entry, idx) => ({
+  ...entry,
+  id: entry.id || `w_${entry.category.toLowerCase()}_${entry.difficulty}_${idx}`
+}));
+

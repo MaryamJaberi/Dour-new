@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import App from '../App';
+import { sound } from '../soundManager';
 
 describe('Complete End-to-End User Flow Tests', () => {
   beforeEach(() => {
@@ -285,5 +286,33 @@ describe('Complete End-to-End User Flow Tests', () => {
 
     // Verify modal is closed
     expect(screen.queryByText(/نحوه افزودن در مرورگر کروم/i)).not.toBeInTheDocument();
+  });
+
+  test('Flow 7: Background music plays ONLY on Intro screen and stops on Setup, History, and Help', () => {
+    render(<App />);
+
+    // On Intro screen -> menu BGM desired & running
+    expect(sound.getDesiredBgmMode()).toBe('menu');
+
+    // Navigate to Setup -> BGM stops
+    fireEvent.click(screen.getByText('شروع بازی جدید'));
+    expect(sound.getDesiredBgmMode()).toBe('none');
+    expect(sound.getCurrentBgmMode()).toBe('none');
+
+    // Return to Intro -> menu BGM resumes
+    fireEvent.click(screen.getByRole('button', { name: /بازگشت/i }));
+    expect(sound.getDesiredBgmMode()).toBe('menu');
+
+    // Navigate to History -> BGM stops
+    fireEvent.click(screen.getByRole('button', { name: /تاریخچه/i }));
+    expect(sound.getDesiredBgmMode()).toBe('none');
+
+    // Return to Intro -> menu BGM resumes
+    fireEvent.click(screen.getAllByRole('button', { name: /بازگشت/i })[0]);
+    expect(sound.getDesiredBgmMode()).toBe('menu');
+
+    // Open Help -> BGM stops
+    fireEvent.click(screen.getByRole('button', { name: /راهنما/i }));
+    expect(sound.getDesiredBgmMode()).toBe('none');
   });
 });
