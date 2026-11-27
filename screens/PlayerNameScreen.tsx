@@ -2,6 +2,7 @@ import React from 'react';
 import { GameSettings, TeamColor } from '../types';
 import { COLORS_MAP } from '../constants';
 import { TRANSLATIONS } from '../translations';
+import { formatTemplate, isRTLLanguage } from '../i18n';
 import { TeamMascot } from '../components/Mascots';
 import { sound } from '../soundManager';
 import { Users, HelpCircle, ArrowRight, ArrowLeft, Zap, Sparkles } from 'lucide-react';
@@ -16,7 +17,7 @@ interface Props {
 
 const PlayerNameScreen: React.FC<Props> = ({ settings, onSave, onStart, onBack, onOpenHelp }) => {
   const t = TRANSLATIONS[settings.language];
-  const isRTL = settings.language === 'fa' || settings.language === 'ar';
+  const isRTL = isRTLLanguage(settings.language);
   
   const getTeamColor = (index: number): TeamColor => {
     const teamIndex = index % (settings.playerCount / 2);
@@ -82,7 +83,7 @@ const PlayerNameScreen: React.FC<Props> = ({ settings, onSave, onStart, onBack, 
               <input 
                 type="text" 
                 maxLength={14}
-                placeholder={`${t.players} ${i + 1}`}
+                placeholder={formatTemplate(t.playerPlaceholder, { n: i + 1 })}
                 value={settings.playerNames[i]}
                 onChange={(e) => updateName(i, e.target.value)}
                 className="flex-1 p-2.5 bg-[#F8EFFF] border-2 border-[#241442] rounded-xl focus:bg-white focus:outline-none transition-all font-black text-sm text-[#1a0833]"

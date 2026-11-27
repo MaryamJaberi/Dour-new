@@ -1,8 +1,9 @@
 {
+  "version": "2.0.0",
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "User profile with game preferences and sync data",
+      "description": "User profile with game preferences, XP/level, achievements, and sync metadata",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
@@ -11,38 +12,141 @@
         "photoURL": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "lastLoginAt": { "type": "string", "format": "date-time" },
+        "lastPlayedAt": { "type": "string", "format": "date-time" },
         "totalGamesPlayed": { "type": "number" },
-        "settings": { "type": "object" }
+        "settings": { "type": "object" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "totalGamesPlayed": { "type": "number" },
+            "totalWordsGuessed": { "type": "number" },
+            "totalWordsSwapped": { "type": "number" },
+            "languagesPlayed": { "type": "array", "items": { "type": "string" } },
+            "dailyStreak": { "type": "number" },
+            "lastDailyDateKey": { "type": "string" },
+            "xp": { "type": "number" },
+            "level": { "type": "number" },
+            "unlockedAchievements": { "type": "array", "items": { "type": "object" } }
+          }
+        }
       },
-      "required": ["uid", "createdAt"]
+      "required": ["uid"]
     },
     "GameMatch": {
       "title": "GameMatch",
-      "description": "Recorded match result and statistics",
+      "description": "Recorded match result with full party telemetry",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "userId": { "type": "string" },
         "date": { "type": "string" },
+        "timestamp": { "type": "number" },
         "winnerNames": { "type": "array", "items": { "type": "string" } },
         "winnerColor": { "type": "string" },
         "players": { "type": "array", "items": { "type": "string" } },
         "roundsCount": { "type": "number" },
+        "roundDuration": { "type": "number" },
         "difficulty": { "type": "string" },
         "language": { "type": "string" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "wordsGuessed": { "type": "number" },
+        "wordsSwapped": { "type": "number" },
+        "mvpPlayer": { "type": "string" },
+        "mode": { "type": "string", "enum": ["classic", "daily", "custom"] },
+        "dailyDateKey": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "date", "winnerNames", "winnerColor", "players"]
+      "required": ["id", "date", "winnerNames", "winnerColor", "players", "language"]
+    },
+    "CustomWordPack": {
+      "title": "CustomWordPack",
+      "description": "User-created custom word deck playable and shareable with friends",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "language": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "words": { "type": "array", "items": { "type": "string" } },
+        "shareCode": { "type": "string" },
+        "playCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "language", "difficulty", "words", "shareCode"]
+    },
+    "PlayerProfileStats": {
+      "title": "PlayerProfileStats",
+      "description": "Per-player aggregated party leaderboard metrics",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "name": { "type": "string" },
+        "gamesPlayed": { "type": "number" },
+        "wins": { "type": "number" },
+        "wordsGuessed": { "type": "number" },
+        "lastPlayedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["key", "name", "gamesPlayed", "wins"]
+    },
+    "WordMemoryEntry": {
+      "title": "WordMemoryEntry",
+      "description": "Anti-repeat seen-word memory and difficulty telemetry",
+      "type": "object",
+      "properties": {
+        "wordId": { "type": "string" },
+        "seenCount": { "type": "number" },
+        "guessedCount": { "type": "number" },
+        "swappedCount": { "type": "number" },
+        "lastSeenAt": { "type": "number" }
+      },
+      "required": ["wordId", "seenCount", "lastSeenAt"]
+    },
+    "DailyChallengeRecord": {
+      "title": "DailyChallengeRecord",
+      "description": "Deterministic daily challenge completion and personal best",
+      "type": "object",
+      "properties": {
+        "dateKey": { "type": "string" },
+        "seed": { "type": "number" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "difficulty": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "bestWordsGuessed": { "type": "number" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["dateKey", "seed", "completed"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserProfile",
-      "description": "Individual user document containing settings and profile"
+      "description": "Individual user document containing settings, XP, level, and achievements"
     },
     "/users/{userId}/matches/{matchId}": {
       "schema": "GameMatch",
-      "description": "Match history records owned by the user"
+      "description": "Rich match history records owned by the user"
+    },
+    "/users/{userId}/customPacks/{packId}": {
+      "schema": "CustomWordPack",
+      "description": "Custom word packs authored or imported by the user"
+    },
+    "/users/{userId}/playerProfiles/{playerKey}": {
+      "schema": "PlayerProfileStats",
+      "description": "Per-player leaderboard stats for friends playing on this account"
+    },
+    "/users/{userId}/wordMemory/{wordId}": {
+      "schema": "WordMemoryEntry",
+      "description": "Word exposure & guess/swap telemetry for smart anti-repeat selection"
+    },
+    "/users/{userId}/dailyChallenges/{dateKey}": {
+      "schema": "DailyChallengeRecord",
+      "description": "Daily challenge progress and streak history"
+    },
+    "/publicPacks/{shareCode}": {
+      "schema": "CustomWordPack",
+      "description": "Publicly shareable word packs addressable by 6-character code"
     }
   }
 }

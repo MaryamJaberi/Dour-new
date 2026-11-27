@@ -36,7 +36,10 @@ import {
   Smile,
   Activity,
   Tv,
-  Cpu
+  Cpu,
+  Atom,
+  Wand2,
+  Palette
 } from 'lucide-react';
 
 interface IconProps {
@@ -166,6 +169,12 @@ export const NeonCategoryIcon: React.FC<{ catKey: string; size?: number; classNa
       return <Tv size={size} className={className} color="#FF007F" />;
     case 'CAT_ADJECTIVES':
       return <Tag size={size} className={className} color="#FFE600" />;
+    case 'CAT_SCIENCE':
+      return <Atom size={size} className={className} color="#00F0FF" />;
+    case 'CAT_MYTHOLOGY':
+      return <Wand2 size={size} className={className} color="#FF007F" />;
+    case 'CAT_CULTURE':
+      return <Palette size={size} className={className} color="#FFE600" />;
     default:
       return <Sparkles size={size} className={className} color="#00F0FF" />;
   }

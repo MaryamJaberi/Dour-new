@@ -1,13 +1,54 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // User profile and private game matches
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // User profile, settings, and aggregate stats/achievements
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      
+      allow read, write: if isOwner(userId);
+
+      // Rich match history records
       match /matches/{matchId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isOwner(userId);
       }
+
+      // User-created custom word packs
+      match /customPacks/{packId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Per-player lifetime leaderboard stats
+      match /playerProfiles/{playerKey} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Word memory & anti-repeat telemetry
+      match /wordMemory/{wordId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Daily challenge progress & streaks
+      match /dailyChallenges/{dateKey} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Publicly shareable custom word packs indexed by 6-char share code
+    match /publicPacks/{shareCode} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.words is list
+        && request.resource.data.words.size() >= 3
+        && request.resource.data.words.size() <= 200;
+      allow update, delete: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid;
     }
   }
 }

@@ -48,7 +48,7 @@ export const UI_COLORS = {
   dangerRed: '#FF2A6D',        // Neon Danger Red
 };
 
-// Use identifiers as keys for i18n lookup
+// Use identifiers as keys for i18n lookup (14 rich categories)
 export const CATEGORIES: Record<string, string[]> = {
   "CAT_OBJECTS": [],
   "CAT_FOOD": [],
@@ -60,5 +60,8 @@ export const CATEGORIES: Record<string, string[]> = {
   "CAT_SPORTS": [],
   "CAT_ADJECTIVES": [],
   "CAT_TECH": [],
-  "CAT_ENTERTAINMENT": []
+  "CAT_ENTERTAINMENT": [],
+  "CAT_SCIENCE": [],
+  "CAT_MYTHOLOGY": [],
+  "CAT_CULTURE": []
 };
