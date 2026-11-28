@@ -16,10 +16,10 @@ def resolvedVersionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInteger()
 def resolvedVersionName = System.getenv("APP_VERSION_NAME") ?: "1.0.0"
 
 android {
-    namespace = "io.github.maryamjaberi.dour"
+    namespace = "com.solonovate.dour"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "io.github.maryamjaberi.dour"
+        applicationId "com.solonovate.dour"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode resolvedVersionCode

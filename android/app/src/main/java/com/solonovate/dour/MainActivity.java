@@ -1,4 +1,4 @@
-package io.github.maryamjaberi.dour;
+package com.solonovate.dour;
 
 import com.getcapacitor.BridgeActivity;
 
